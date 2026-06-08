@@ -7,13 +7,13 @@ export default function AdminLayout() {
 
   const handleLogout = () => {
     logout();
-    navigate('/admin/login');
+    navigate('/login');
   };
 
   const initials = user?.email ? user.email.charAt(0).toUpperCase() : '?';
 
   return (
-    <div className="dashboard-layout" data-theme="admin">
+    <div className="dashboard-layout">
       <aside className="sidebar">
         <div className="sidebar__brand">
           <div className="sidebar__brand-icon">🛡️</div>
@@ -22,7 +22,7 @@ export default function AdminLayout() {
 
         <nav className="sidebar__nav">
           <NavLink
-            to="/admin/dashboard"
+            to="/dashboard"
             className={({ isActive }) =>
               `sidebar__link ${isActive ? 'sidebar__link--active' : ''}`
             }

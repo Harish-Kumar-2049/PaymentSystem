@@ -3,13 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import type { ReactNode } from 'react';
 
 // Layouts
-import UserLayout from './components/UserLayout';
 import AdminLayout from './components/AdminLayout';
-
-// User Views
-import UserLogin from './views/user/Login';
-import Register from './views/user/Register';
-import UserDashboard from './views/user/Dashboard';
 
 // Admin Views
 import AdminLogin from './views/admin/Login';
@@ -20,24 +14,20 @@ import NotFound from './views/shared/NotFound';
 
 // ── Route Guards ──
 
-function UserRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuth();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user?.role === 'ADMIN') return <Navigate to="/admin/dashboard" replace />;
-  return <>{children}</>;
-}
-
 function AdminRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isAdmin } = useAuth();
-  if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
-  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAdmin) {
+    // If not an admin, clear token and redirect to login
+    return <Navigate to="/login" replace />;
+  }
   return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated } = useAuth();
   if (isAuthenticated) {
-    return <Navigate to={isAdmin ? '/admin/dashboard' : '/dashboard'} replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
 }
@@ -50,37 +40,10 @@ function AppRoutes() {
         path="/login"
         element={
           <PublicRoute>
-            <UserLogin />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        }
-      />
-      <Route
-        path="/admin/login"
-        element={
-          <PublicRoute>
             <AdminLogin />
           </PublicRoute>
         }
       />
-
-      {/* ── User Portal ── */}
-      <Route
-        element={
-          <UserRoute>
-            <UserLayout />
-          </UserRoute>
-        }
-      >
-        <Route path="/dashboard" element={<UserDashboard />} />
-      </Route>
 
       {/* ── Admin Portal ── */}
       <Route
@@ -90,7 +53,7 @@ function AppRoutes() {
           </AdminRoute>
         }
       >
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/dashboard" element={<AdminDashboard />} />
       </Route>
 
       {/* ── Fallbacks ── */}

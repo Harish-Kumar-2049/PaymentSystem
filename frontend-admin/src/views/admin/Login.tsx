@@ -27,7 +27,7 @@ export default function AdminLogin() {
       }
 
       login(token, userEmail, role);
-      navigate('/admin/dashboard');
+      navigate('/dashboard');
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string }; status?: number } };
@@ -45,7 +45,7 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="auth-page" data-theme="admin">
+    <div className="auth-page">
       <div className="auth-card">
         <div className="auth-card__header">
           <div className="auth-card__logo">🛡️ PayHa Admin</div>
@@ -90,10 +90,6 @@ export default function AdminLogin() {
             {loading ? <span className="spinner" /> : 'Access Control Panel'}
           </button>
         </form>
-
-        <div className="auth-card__footer">
-          Not an admin? <a href="/login">Go to User Portal</a>
-        </div>
       </div>
     </div>
   );
