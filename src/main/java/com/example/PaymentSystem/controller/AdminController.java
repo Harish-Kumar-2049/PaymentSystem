@@ -1,8 +1,10 @@
 package com.example.PaymentSystem.controller;
 
+import com.example.PaymentSystem.dto.response.UserWalletsResponse;
 import com.example.PaymentSystem.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +32,12 @@ public class AdminController {
                 "walletId", walletId.toString(),
                 "amount", amount.toString()
         ));
+    }
+
+    @GetMapping("/users/lookup")
+    public ResponseEntity<UserWalletsResponse> lookupUserWallets(
+            @RequestParam String query) {
+        return ResponseEntity.ok(walletService.lookupUserWallets(query));
     }
 }
 

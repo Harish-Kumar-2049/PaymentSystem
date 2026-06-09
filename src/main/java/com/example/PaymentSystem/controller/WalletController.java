@@ -45,5 +45,13 @@ public class WalletController {
         User user = (User) authentication.getPrincipal();
         return ResponseEntity.ok(walletService.getUserWallets(user.getId()));
     }
+
+    @PostMapping("/{walletId}/set-primary")
+    public ResponseEntity<WalletResponse> setPrimary(
+            @PathVariable UUID walletId,
+            Authentication authentication) {
+        User user = (User) authentication.getPrincipal();
+        return ResponseEntity.ok(walletService.setPrimaryWallet(user.getId(), walletId));
+    }
 }
 

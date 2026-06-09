@@ -9,12 +9,56 @@ export default function AdminDashboard() {
   const [depositMessage, setDepositMessage] = useState('');
   const [depositError, setDepositError] = useState('');
 
+  // Lookup states
+  const [lookupQuery, setLookupQuery] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookedUpUser, setLookedUpUser] = useState<{ userId: string; email: string; fullName: string } | null>(null);
+  const [lookedUpWallets, setLookedUpWallets] = useState<any[]>([]);
+
   // Audit lookup
   const [auditUserId, setAuditUserId] = useState('');
   const [auditTxnId, setAuditTxnId] = useState('');
   const [auditResults, setAuditResults] = useState<unknown[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState('');
+
+  const handleLookup = async (queryParam?: string) => {
+    const query = queryParam || lookupQuery;
+    if (!query) {
+      setDepositError('Please enter an email or Account / Wallet ID to lookup.');
+      return;
+    }
+
+    setLookupLoading(true);
+    setDepositError('');
+    setDepositMessage('');
+    setLookedUpUser(null);
+    setLookedUpWallets([]);
+    setDepositWalletId('');
+
+    try {
+      const res = await adminAPI.lookupUserWallets(query);
+      setLookedUpUser({
+        userId: res.data.userId,
+        email: res.data.email,
+        fullName: res.data.fullName,
+      });
+      setLookedUpWallets(res.data.wallets);
+      // Auto select first wallet if available
+      if (res.data.wallets && res.data.wallets.length > 0) {
+        setDepositWalletId(res.data.wallets[0].id);
+      }
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { message?: string } } };
+        setDepositError(axiosErr.response?.data?.message || 'Lookup failed.');
+      } else {
+        setDepositError('Lookup failed. User or wallet not found.');
+      }
+    } finally {
+      setLookupLoading(false);
+    }
+  };
 
   const handleDeposit = async () => {
     setDepositMessage('');
@@ -29,8 +73,11 @@ export default function AdminDashboard() {
     try {
       const res = await adminAPI.deposit(depositWalletId, parseFloat(depositAmount));
       setDepositMessage(res.data.message || 'Deposit successful.');
-      setDepositWalletId('');
       setDepositAmount('');
+      // Refresh user's wallets list to show new balance
+      if (lookupQuery) {
+        handleLookup(lookupQuery);
+      }
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axiosErr = err as { response?: { data?: { message?: string } } };
@@ -99,40 +146,84 @@ export default function AdminDashboard() {
         {depositError && <div className="alert alert--error">⚠ {depositError}</div>}
         {depositMessage && <div className="alert alert--success">✓ {depositMessage}</div>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+        {/* Lookup search bar */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end', marginBottom: '1rem' }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" htmlFor="deposit-wallet-id">Wallet ID</label>
+            <label className="form-label" htmlFor="lookup-query">Lookup User by Email or Account / Wallet ID</label>
             <input
-              id="deposit-wallet-id"
+              id="lookup-query"
               className="form-input"
               type="text"
-              placeholder="Paste wallet UUID"
-              value={depositWalletId}
-              onChange={(e) => setDepositWalletId(e.target.value)}
-            />
-          </div>
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label" htmlFor="deposit-amount">Amount</label>
-            <input
-              id="deposit-amount"
-              className="form-input"
-              type="number"
-              step="0.01"
-              min="0.01"
-              placeholder="0.00"
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
+              placeholder="Enter user email or wallet UUID"
+              value={lookupQuery}
+              onChange={(e) => setLookupQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleLookup();
+              }}
             />
           </div>
           <button
-            id="confirm-deposit"
-            className="btn btn--primary"
-            onClick={handleDeposit}
-            disabled={depositLoading}
+            id="lookup-btn"
+            className="btn btn--ghost"
+            onClick={() => handleLookup()}
+            disabled={lookupLoading}
           >
-            {depositLoading ? <span className="spinner" /> : 'Deposit'}
+            {lookupLoading ? <span className="spinner" /> : 'Lookup'}
           </button>
         </div>
+
+        {/* Looked up user details and wallet selection */}
+        {lookedUpUser && (
+          <div style={{ borderTop: '1px solid var(--color-border, #e5e7eb)', paddingTop: '1rem', marginTop: '1rem' }}>
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(59, 130, 246, 0.05)', borderRadius: '6px' }}>
+              <strong>User Found:</strong> {lookedUpUser.fullName} ({lookedUpUser.email})
+            </div>
+
+            {lookedUpWallets.length === 0 ? (
+              <div className="alert alert--warning">This user has no active wallets.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="deposit-wallet-select">Select Wallet to Deposit</label>
+                  <select
+                    id="deposit-wallet-select"
+                    className="form-select"
+                    style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid var(--color-border, #e5e7eb)', backgroundColor: 'var(--color-bg)' }}
+                    value={depositWalletId}
+                    onChange={(e) => setDepositWalletId(e.target.value)}
+                  >
+                    {lookedUpWallets.map((wallet, idx) => (
+                      <option key={wallet.id} value={wallet.id}>
+                        Wallet #{idx + 1} ({wallet.currency}) - Balance: {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(wallet.balance)} {wallet.isPrimary ? '[Primary]' : ''} - ID: {wallet.id.slice(-8).toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="deposit-amount">Amount</label>
+                  <input
+                    id="deposit-amount"
+                    className="form-input"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0.00"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                  />
+                </div>
+                <button
+                  id="confirm-deposit"
+                  className="btn btn--primary"
+                  onClick={handleDeposit}
+                  disabled={depositLoading}
+                >
+                  {depositLoading ? <span className="spinner" /> : 'Deposit'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Audit Logs Section */}

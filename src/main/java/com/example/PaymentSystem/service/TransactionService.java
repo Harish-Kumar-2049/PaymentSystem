@@ -4,6 +4,7 @@ import com.example.PaymentSystem.dto.request.RefundRequest;
 import com.example.PaymentSystem.dto.request.TransferRequest;
 import com.example.PaymentSystem.dto.response.TransactionResponse;
 import com.example.PaymentSystem.entity.Transaction;
+import com.example.PaymentSystem.entity.User;
 import com.example.PaymentSystem.entity.Wallet;
 import com.example.PaymentSystem.enums.TransactionStatus;
 import com.example.PaymentSystem.enums.TransactionType;
@@ -11,6 +12,7 @@ import com.example.PaymentSystem.enums.WalletStatus;
 import com.example.PaymentSystem.exception.DuplicateTransactionException;
 import com.example.PaymentSystem.exception.ResourceNotFoundException;
 import com.example.PaymentSystem.repository.TransactionRepository;
+import com.example.PaymentSystem.repository.UserRepository;
 import com.example.PaymentSystem.repository.WalletRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -27,6 +30,7 @@ public class TransactionService {
 
     private final TransactionRepository transactionRepository;
     private final WalletRepository walletRepository;
+    private final UserRepository userRepository;
     private final WalletService walletService;
     private final LedgerService ledgerService;
     private final AuditLogService auditLogService;
@@ -43,9 +47,41 @@ public class TransactionService {
         Wallet source = walletRepository.findById(request.getSourceWalletId())
                 .filter(w -> w.getStatus() == WalletStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Source wallet not found"));
-        Wallet target = walletRepository.findById(request.getTargetWalletId())
-                .filter(w -> w.getStatus() == WalletStatus.ACTIVE)
-                .orElseThrow(() -> new ResourceNotFoundException("Target wallet not found"));
+
+        // Find recipient user by email or by user ID (UUID)
+        User targetUser = null;
+        String recipientIdStr = request.getRecipientIdentifier().trim();
+        try {
+            UUID targetUserId = UUID.fromString(recipientIdStr);
+            targetUser = userRepository.findById(targetUserId).orElse(null);
+        } catch (IllegalArgumentException e) {
+            // Not a UUID format, proceed to email lookup
+        }
+
+        if (targetUser == null) {
+            targetUser = userRepository.findByEmail(recipientIdStr)
+                    .orElseThrow(() -> new ResourceNotFoundException("Recipient user not found for: " + recipientIdStr));
+        }
+
+        // Find target user's wallets
+        List<Wallet> targetWallets = walletRepository.findByUser_Id(targetUser.getId());
+        if (targetWallets.isEmpty()) {
+            throw new ResourceNotFoundException("Recipient user has no wallets");
+        }
+
+        // Target wallet is the recipient's primary active wallet
+        Wallet target = targetWallets.stream()
+                .filter(w -> w.getStatus() == WalletStatus.ACTIVE && w.isPrimary())
+                .findFirst()
+                .orElse(null);
+
+        // Fallback: if no wallet is explicitly marked primary, use the oldest active wallet
+        if (target == null) {
+            target = targetWallets.stream()
+                    .filter(w -> w.getStatus() == WalletStatus.ACTIVE)
+                    .min(java.util.Comparator.comparing(Wallet::getCreatedAt))
+                    .orElseThrow(() -> new ResourceNotFoundException("Recipient has no active wallet"));
+        }
 
         Transaction txn = new Transaction();
         txn.setIdempotencyKey(idempotencyKey);
@@ -140,4 +176,3 @@ public class TransactionService {
                 .build();
     }
 }
-

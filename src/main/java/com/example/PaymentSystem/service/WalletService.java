@@ -1,5 +1,6 @@
 package com.example.PaymentSystem.service;
 
+import com.example.PaymentSystem.dto.response.UserWalletsResponse;
 import com.example.PaymentSystem.dto.response.WalletResponse;
 import com.example.PaymentSystem.entity.User;
 import com.example.PaymentSystem.entity.Wallet;
@@ -10,6 +11,7 @@ import com.example.PaymentSystem.repository.UserRepository;
 import com.example.PaymentSystem.repository.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,11 +31,15 @@ public class WalletService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        boolean hasActiveWallet = walletRepository.findByUser_Id(userId).stream()
+                .anyMatch(w -> w.getStatus() == WalletStatus.ACTIVE);
+
         Wallet wallet = new Wallet();
         wallet.setUser(user);
-        wallet.setCurrency(currency != null ? currency : "INR");
+        wallet.setCurrency("INR");
         wallet.setBalance(BigDecimal.ZERO);
         wallet.setStatus(WalletStatus.ACTIVE);
+        wallet.setPrimary(!hasActiveWallet);
 
         Wallet saved = walletRepository.save(wallet);
         auditLogService.log(userId, null,
@@ -83,12 +89,73 @@ public class WalletService {
                 "Deposited " + amount + " to wallet " + walletId);
     }
 
+    @Transactional
+    public WalletResponse setPrimaryWallet(UUID userId, UUID walletId) {
+        List<Wallet> wallets = walletRepository.findByUser_Id(userId);
+        Wallet targetWallet = wallets.stream()
+                .filter(w -> w.getId().equals(walletId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Wallet not found or does not belong to user"));
+
+        for (Wallet w : wallets) {
+            w.setPrimary(w.getId().equals(walletId));
+            walletRepository.save(w);
+        }
+
+        auditLogService.log(userId, null,
+                "WALLET_PRIMARY_UPDATED", "WALLET", null, walletId.toString());
+
+        return mapToResponse(targetWallet);
+    }
+
+    public UserWalletsResponse lookupUserWallets(String query) {
+        User user = null;
+        // 1. Try treating query as Wallet ID UUID
+        try {
+            UUID walletId = UUID.fromString(query.trim());
+            Wallet wallet = walletRepository.findById(walletId).orElse(null);
+            if (wallet != null) {
+                user = wallet.getUser();
+            }
+        } catch (IllegalArgumentException e) {
+            // Not a UUID
+        }
+
+        // 2. Try treating query as User ID UUID if user is still null
+        if (user == null) {
+            try {
+                UUID userId = UUID.fromString(query.trim());
+                user = userRepository.findById(userId).orElse(null);
+            } catch (IllegalArgumentException e) {
+                // Not a UUID
+            }
+        }
+
+        // 3. Try treating query as email
+        if (user == null) {
+            user = userRepository.findByEmail(query.trim()).orElse(null);
+        }
+
+        if (user == null) {
+            throw new ResourceNotFoundException("No user or wallet found for query: " + query);
+        }
+
+        List<WalletResponse> wallets = getUserWallets(user.getId());
+        return UserWalletsResponse.builder()
+                .userId(user.getId())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .wallets(wallets)
+                .build();
+    }
+
     private WalletResponse mapToResponse(Wallet wallet) {
         return WalletResponse.builder()
                 .id(wallet.getId())
                 .balance(wallet.getBalance())
                 .currency(wallet.getCurrency())
                 .status(wallet.getStatus().name())
+                .isPrimary(wallet.isPrimary())
                 .createdAt(LocalDateTime.ofInstant(wallet.getCreatedAt(), ZoneId.systemDefault()))
                 .build();
     }

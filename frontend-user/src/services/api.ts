@@ -29,21 +29,24 @@ export const authAPI = {
 
 // ── Wallets ──
 export const walletAPI = {
-  create: (currency: string = 'INR') =>
-    api.post(`/wallets?currency=${currency}`),
+  create: () =>
+    api.post('/wallets'),
 
   getById: (walletId: string) =>
     api.get(`/wallets/${walletId}`),
 
   getMyWallets: () =>
     api.get('/wallets/my-wallets'),
+
+  setPrimary: (walletId: string) =>
+    api.post(`/wallets/${walletId}/set-primary`),
 };
 
 // ── Transactions ──
 export const transactionAPI = {
   transfer: (data: {
     sourceWalletId: string;
-    targetWalletId: string;
+    recipientIdentifier: string;
     amount: number;
     idempotencyKey: string;
   }) => api.post('/transactions/transfer', data),

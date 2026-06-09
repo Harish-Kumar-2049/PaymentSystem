@@ -49,6 +49,9 @@ public class Wallet {
     @Column(nullable = false, length = 16)
     private WalletStatus status = WalletStatus.ACTIVE;
 
+    @Column(nullable = false, name = "is_primary", columnDefinition = "boolean default false")
+    private boolean isPrimary = false;
+
     @OneToMany(mappedBy = "sourceWallet", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Transaction> outgoingTransactions = new ArrayList<>();
 

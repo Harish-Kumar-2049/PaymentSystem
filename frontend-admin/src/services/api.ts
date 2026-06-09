@@ -33,6 +33,9 @@ export const auditAPI = {
 export const adminAPI = {
   deposit: (walletId: string, amount: number) =>
     api.post(`/admin/wallets/${walletId}/deposit?amount=${amount}`),
+
+  lookupUserWallets: (query: string) =>
+    api.get(`/admin/users/lookup?query=${query}`),
 };
 
 export default api;

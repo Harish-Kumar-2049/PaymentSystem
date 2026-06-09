@@ -14,6 +14,7 @@ public class WalletResponse {
     private BigDecimal balance;
     private String currency;
     private String status;
+    private boolean isPrimary;
     private LocalDateTime createdAt;
 }
 

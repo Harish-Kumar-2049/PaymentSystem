@@ -7,12 +7,13 @@ interface Wallet {
   balance: number;
   currency: string;
   status: string;
+  isPrimary: boolean;
   createdAt: string;
 }
 
 interface TransferForm {
   sourceWalletId: string;
-  targetWalletId: string;
+  recipientIdentifier: string;
   amount: string;
 }
 
@@ -26,7 +27,7 @@ export default function UserDashboard() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferForm, setTransferForm] = useState<TransferForm>({
     sourceWalletId: '',
-    targetWalletId: '',
+    recipientIdentifier: '',
     amount: '',
   });
   const [transferLoading, setTransferLoading] = useState(false);
@@ -35,7 +36,6 @@ export default function UserDashboard() {
 
   // Create wallet
   const [showCreateWallet, setShowCreateWallet] = useState(false);
-  const [newCurrency, setNewCurrency] = useState('INR');
   const [createLoading, setCreateLoading] = useState(false);
 
   const fetchWallets = async () => {
@@ -61,9 +61,8 @@ export default function UserDashboard() {
   const handleCreateWallet = async () => {
     setCreateLoading(true);
     try {
-      await walletAPI.create(newCurrency);
+      await walletAPI.create();
       setShowCreateWallet(false);
-      setNewCurrency('INR');
       fetchWallets();
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
@@ -77,17 +76,27 @@ export default function UserDashboard() {
     }
   };
 
+  const handleSetPrimary = async (walletId: string) => {
+    try {
+      setError('');
+      await walletAPI.setPrimary(walletId);
+      fetchWallets();
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosErr = err as { response?: { data?: { message?: string } } };
+        setError(axiosErr.response?.data?.message || 'Failed to update primary wallet.');
+      } else {
+        setError('Failed to update primary wallet.');
+      }
+    }
+  };
+
   const handleTransfer = async () => {
     setTransferError('');
     setTransferSuccess('');
 
-    if (!transferForm.sourceWalletId || !transferForm.targetWalletId || !transferForm.amount) {
+    if (!transferForm.sourceWalletId || !transferForm.recipientIdentifier || !transferForm.amount) {
       setTransferError('All fields are required.');
-      return;
-    }
-
-    if (transferForm.sourceWalletId === transferForm.targetWalletId) {
-      setTransferError('Source and target wallets must be different.');
       return;
     }
 
@@ -96,12 +105,12 @@ export default function UserDashboard() {
       const idempotencyKey = crypto.randomUUID();
       await transactionAPI.transfer({
         sourceWalletId: transferForm.sourceWalletId,
-        targetWalletId: transferForm.targetWalletId,
+        recipientIdentifier: transferForm.recipientIdentifier,
         amount: parseFloat(transferForm.amount),
         idempotencyKey,
       });
       setTransferSuccess('Transfer completed successfully!');
-      setTransferForm({ sourceWalletId: '', targetWalletId: '', amount: '' });
+      setTransferForm({ sourceWalletId: '', recipientIdentifier: '', amount: '' });
       fetchWallets();
       setTimeout(() => {
         setShowTransfer(false);
@@ -119,33 +128,40 @@ export default function UserDashboard() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: currency || 'INR',
+      currency: 'INR',
       minimumFractionDigits: 2,
     }).format(amount);
   };
+
+  const shortId = (id: string) => id.slice(-8).toUpperCase();
 
   const totalBalance = wallets.reduce((sum, w) => sum + w.balance, 0);
 
   return (
     <>
       <div className="page-header">
-        <h1 className="page-header__title">Dashboard</h1>
-        <p className="page-header__subtitle">
-          Welcome back, {user?.email}
-        </p>
-      </div>
-
-      {error && <div className="alert alert--error">⚠ {error}</div>}
+         <h1 className="page-header__title">Dashboard</h1>
+         <p className="page-header__subtitle">
+           Welcome back, {user?.email}
+         </p>
+       </div>
+ 
+       {error && <div className="alert alert--error">⚠ {error}</div>}
+ 
+       <div className="alert alert--info" style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)', padding: '0.75rem 1rem', borderRadius: '6px', fontSize: '0.9rem' }}>
+         <span>ℹ</span>
+         <span>You will receive money in your primary wallet.</span>
+       </div>
 
       {/* Stats */}
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-card__icon stat-card__icon--primary">💰</div>
           <div className="stat-card__label">Total Balance</div>
-          <div className="stat-card__value">{formatCurrency(totalBalance, 'INR')}</div>
+          <div className="stat-card__value">{formatCurrency(totalBalance)}</div>
         </div>
         <div className="stat-card">
           <div className="stat-card__icon stat-card__icon--success">👛</div>
@@ -186,16 +202,43 @@ export default function UserDashboard() {
         </div>
       ) : (
         <div className="wallet-grid">
-          {wallets.map((wallet) => (
+          {wallets.map((wallet, idx) => (
             <div className="wallet-card" key={wallet.id}>
-              <span className="wallet-card__currency">{wallet.currency}</span>
-              <div className="wallet-card__balance">
-                {formatCurrency(wallet.balance, wallet.currency)}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span className="wallet-card__currency">Wallet #{idx + 1}</span>
+                {wallet.isPrimary && (
+                  <span style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                    color: '#3b82f6',
+                    border: '1px solid rgba(59, 130, 246, 0.3)'
+                  }}>Primary</span>
+                )}
               </div>
-              <div className="wallet-card__id">ID: {wallet.id}</div>
-              <span className={`wallet-card__status wallet-card__status--${wallet.status.toLowerCase()}`}>
-                {wallet.status}
-              </span>
+              <div className="wallet-card__balance">
+                {formatCurrency(wallet.balance)}
+              </div>
+              <div className="wallet-card__id" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '0.5rem', wordBreak: 'break-all' }}>
+                <strong>Acct No:</strong> {shortId(wallet.id)}<br/>
+                <strong>Wallet ID:</strong> {wallet.id}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                <span className={`wallet-card__status wallet-card__status--${wallet.status.toLowerCase()}`}>
+                  {wallet.status}
+                </span>
+                {!wallet.isPrimary && wallet.status === 'ACTIVE' && (
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', border: '1px solid var(--color-border)' }}
+                    onClick={() => handleSetPrimary(wallet.id)}
+                  >
+                    Set Primary
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -209,20 +252,9 @@ export default function UserDashboard() {
               <h2 className="modal__title">Create New Wallet</h2>
               <button className="modal__close" onClick={() => setShowCreateWallet(false)}>✕</button>
             </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="wallet-currency">Currency</label>
-              <select
-                id="wallet-currency"
-                className="form-select"
-                value={newCurrency}
-                onChange={(e) => setNewCurrency(e.target.value)}
-              >
-                <option value="INR">INR – Indian Rupee</option>
-                <option value="USD">USD – US Dollar</option>
-                <option value="EUR">EUR – Euro</option>
-                <option value="GBP">GBP – British Pound</option>
-              </select>
-            </div>
+            <p style={{ color: 'var(--color-text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+              A new INR wallet will be created for your account.
+            </p>
             <button
               id="confirm-create-wallet"
               className="btn btn--primary btn--full"
@@ -256,23 +288,23 @@ export default function UserDashboard() {
                 onChange={(e) => setTransferForm({ ...transferForm, sourceWalletId: e.target.value })}
               >
                 <option value="">Select source wallet</option>
-                {wallets.filter(w => w.status === 'ACTIVE').map(w => (
+                {wallets.filter(w => w.status === 'ACTIVE').map((w, idx) => (
                   <option key={w.id} value={w.id}>
-                    {w.currency} – {formatCurrency(w.balance, w.currency)}
+                    Wallet #{idx + 1} – {formatCurrency(w.balance)}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label" htmlFor="transfer-target">To Wallet ID</label>
+              <label className="form-label" htmlFor="transfer-recipient">Recipient Email or Account ID</label>
               <input
-                id="transfer-target"
+                id="transfer-recipient"
                 className="form-input"
                 type="text"
-                placeholder="Paste recipient wallet ID"
-                value={transferForm.targetWalletId}
-                onChange={(e) => setTransferForm({ ...transferForm, targetWalletId: e.target.value })}
+                placeholder="Enter email or user ID"
+                value={transferForm.recipientIdentifier}
+                onChange={(e) => setTransferForm({ ...transferForm, recipientIdentifier: e.target.value })}
               />
             </div>
 
