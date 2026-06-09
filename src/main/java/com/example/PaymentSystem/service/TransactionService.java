@@ -35,6 +35,7 @@ public class TransactionService {
     private final LedgerService ledgerService;
     private final AuditLogService auditLogService;
     private final IdempotencyService idempotencyService;
+    private final com.example.PaymentSystem.event.PaymentEventPublisher paymentEventPublisher;
 
     @Transactional
     public TransactionResponse transfer(TransferRequest request, UUID initiatedByUserId) {
@@ -123,6 +124,13 @@ public class TransactionService {
                     TransactionStatus.PENDING.name(),
                     TransactionStatus.SUCCESS.name());
 
+            // publish payment event
+            paymentEventPublisher.publishPaymentSuccess(
+                    saved.getId(),
+                    request.getSourceWalletId(),
+                    request.getTargetWalletId(),
+                    request.getAmount());
+
             return mapToResponse(saved);
 
         } catch (Exception e) {
@@ -161,6 +169,11 @@ public class TransactionService {
                 "REFUND_SUCCESS", "TRANSACTION",
                 TransactionStatus.SUCCESS.name(),
                 TransactionStatus.REFUNDED.name());
+
+        // publish refund event
+        paymentEventPublisher.publishRefundSuccess(
+                original.getId(),
+                original.getAmount());
 
         return mapToResponse(original);
     }
