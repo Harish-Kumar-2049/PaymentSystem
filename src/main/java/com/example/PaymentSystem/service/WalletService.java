@@ -26,6 +26,7 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final WalletCacheService walletCacheService;
 
     public WalletResponse createWallet(UUID userId, String currency) {
         User user = userRepository.findById(userId)
@@ -49,9 +50,23 @@ public class WalletService {
     }
 
     public WalletResponse getWallet(UUID walletId) {
+        // check cache first
+        java.util.Optional<java.math.BigDecimal> cached =
+                walletCacheService.getCachedBalance(walletId);
+
         Wallet wallet = walletRepository
                 .findByIdAndStatus(walletId, WalletStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Wallet not found or inactive"));
+
+        if (cached.isPresent()) {
+            // serve from cache — no DB hit for balance
+            WalletResponse response = mapToResponse(wallet);
+            response.setBalance(cached.get());
+            return response;
+        }
+
+        // cache miss — fetch from DB and cache it
+        walletCacheService.cacheBalance(walletId, wallet.getBalance());
         return mapToResponse(wallet);
     }
 
@@ -71,6 +86,7 @@ public class WalletService {
 
         wallet.setBalance(wallet.getBalance().subtract(amount));
         walletRepository.save(wallet);
+        walletCacheService.evictBalance(walletId); // ADD THIS
     }
 
     public void credit(UUID walletId, BigDecimal amount) {
@@ -80,6 +96,7 @@ public class WalletService {
 
         wallet.setBalance(wallet.getBalance().add(amount));
         walletRepository.save(wallet);
+        walletCacheService.evictBalance(walletId); // ADD THIS
     }
 
     public void adminDeposit(UUID walletId, BigDecimal amount) {

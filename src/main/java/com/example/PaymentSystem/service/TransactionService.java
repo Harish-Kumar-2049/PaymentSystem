@@ -34,15 +34,16 @@ public class TransactionService {
     private final WalletService walletService;
     private final LedgerService ledgerService;
     private final AuditLogService auditLogService;
+    private final IdempotencyService idempotencyService;
 
     @Transactional
     public TransactionResponse transfer(TransferRequest request, UUID initiatedByUserId) {
+        // Redis idempotency check — fast, before any DB touch
         String idempotencyKey = request.getIdempotencyKey().toString();
-        transactionRepository.findByIdempotencyKey(idempotencyKey)
-                .ifPresent(t -> {
-                    throw new DuplicateTransactionException(
-                            "Transaction already processed with this idempotency key");
-                });
+        if (!idempotencyService.isNewRequest(idempotencyKey)) {
+            throw new DuplicateTransactionException(
+                    "Duplicate request — already processed");
+        }
 
         Wallet source = walletRepository.findById(request.getSourceWalletId())
                 .filter(w -> w.getStatus() == WalletStatus.ACTIVE)
@@ -114,6 +115,9 @@ public class TransactionService {
             saved.setStatus(TransactionStatus.SUCCESS);
             transactionRepository.save(saved);
 
+            // mark idempotency as completed
+            idempotencyService.markCompleted(idempotencyKey);
+
             auditLogService.log(initiatedByUserId, saved.getId(),
                     "TRANSFER_SUCCESS", "TRANSACTION",
                     TransactionStatus.PENDING.name(),
@@ -122,6 +126,9 @@ public class TransactionService {
             return mapToResponse(saved);
 
         } catch (Exception e) {
+            // mark idempotency as failed so client can retry
+            idempotencyService.markFailed(idempotencyKey);
+
             saved.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(saved);
 
