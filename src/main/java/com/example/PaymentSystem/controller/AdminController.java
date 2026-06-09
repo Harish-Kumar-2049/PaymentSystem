@@ -2,6 +2,7 @@ package com.example.PaymentSystem.controller;
 
 import com.example.PaymentSystem.dto.response.UserWalletsResponse;
 import com.example.PaymentSystem.service.WalletService;
+import com.example.PaymentSystem.service.ReconciliationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class AdminController {
 
     private final WalletService walletService;
+    private final ReconciliationService reconciliationService;
 
     @PostMapping("/wallets/{walletId}/deposit")
     public ResponseEntity<Map<String, String>> deposit(
@@ -38,6 +40,13 @@ public class AdminController {
     public ResponseEntity<UserWalletsResponse> lookupUserWallets(
             @RequestParam String query) {
         return ResponseEntity.ok(walletService.lookupUserWallets(query));
+    }
+
+    @PostMapping("/reconcile")
+    public ResponseEntity<Map<String, String>> triggerReconciliation() {
+        reconciliationService.reconcileNow();
+        return ResponseEntity.ok(Map.of(
+                "message", "Reconciliation completed — check logs"));
     }
 }
 
