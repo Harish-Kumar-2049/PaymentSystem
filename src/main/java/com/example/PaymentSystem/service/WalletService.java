@@ -75,9 +75,13 @@ public class WalletService {
                 .stream().map(this::mapToResponse).toList();
     }
 
+    @Transactional
     public void debit(UUID walletId, BigDecimal amount) {
+        // SELECT … FOR UPDATE — exclusively locks this wallet row at the DB level.
+        // No other transaction can read-for-update or modify this row until
+        // this transaction commits or rolls back, preventing double-spend.
         Wallet wallet = walletRepository
-                .findByIdAndStatus(walletId, WalletStatus.ACTIVE)
+                .findByIdAndStatusWithLock(walletId, WalletStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Source wallet not found"));
 
         if (wallet.getBalance().compareTo(amount) < 0) {
@@ -86,19 +90,22 @@ public class WalletService {
 
         wallet.setBalance(wallet.getBalance().subtract(amount));
         walletRepository.save(wallet);
-        walletCacheService.evictBalance(walletId); // ADD THIS
+        walletCacheService.evictBalance(walletId);
     }
 
+    @Transactional
     public void credit(UUID walletId, BigDecimal amount) {
+        // SELECT … FOR UPDATE — exclusively locks this wallet row at the DB level.
         Wallet wallet = walletRepository
-                .findByIdAndStatus(walletId, WalletStatus.ACTIVE)
+                .findByIdAndStatusWithLock(walletId, WalletStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("Target wallet not found"));
 
         wallet.setBalance(wallet.getBalance().add(amount));
         walletRepository.save(wallet);
-        walletCacheService.evictBalance(walletId); // ADD THIS
+        walletCacheService.evictBalance(walletId);
     }
 
+    @Transactional
     public void adminDeposit(UUID walletId, BigDecimal amount) {
         credit(walletId, amount);
         auditLogService.log(null, null,
